@@ -32,7 +32,7 @@ let
     if config.programs.nushell.enable then
       ''
         if not "SSH_AUTH_SOCK" in $env {
-          $env.SSH_AUTH_SOCK = ${gpgPkg}/bin/gpgconf --list-dirs agent-ssh-socket
+          $env.SSH_AUTH_SOCK = (${gpgPkg}/bin/gpgconf --list-dirs agent-ssh-socket)
         }
       ''
     else
