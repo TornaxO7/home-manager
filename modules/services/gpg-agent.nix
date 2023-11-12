@@ -22,6 +22,26 @@ let
     set -gx GPG_TTY (tty)
   '' + optionalString cfg.enableSshSupport gpgSshSupportStr;
 
+  gpgNushellInitStr = ''
+    $env.GPG_TTY=$(tty)
+    ${gpgPkg}/bin/gpg-connect-agent updatestartuptty /bye | collect { null }
+  '';
+
+  sessionVariablesExtra =
+    if programs.nushell.enable then
+      ''
+        if not "SSH_AUTH_SOCK" in $env {
+          $env.SSH_AUTH_SOCK = $(${gpgPkg}/bin/gpgconf --list-dirs agent-ssh-socket)
+        }
+      ''
+    else
+      ''
+        if [[ -z "$SSH_AUTH_SOCK" ]]; then
+          export SSH_AUTH_SOCK="$(${gpgPkg}/bin/gpgconf --list-dirs agent-ssh-socket)"
+        fi
+      ''
+  ;
+
   # mimic `gpgconf` output for use in `systemd` unit definitions.
   # we cannot use `gpgconf` directly because it heavily depends on system
   # state, but we need the values at build time. original:
@@ -30,47 +50,53 @@ let
     let
       hash =
         substring 0 24 (hexStringToBase32 (builtins.hashString "sha1" homedir));
-    in if homedir == options.programs.gpg.homedir.default then
+    in
+    if homedir == options.programs.gpg.homedir.default then
       "%t/gnupg/${dir}"
     else
       "%t/gnupg/d.${hash}/${dir}";
 
   # Act like `xxd -r -p | base32` but with z-base-32 alphabet and no trailing padding.
   # Written in Nix for purity.
-  hexStringToBase32 = let
-    mod = a: b: a - a / b * b;
-    pow2 = elemAt [ 1 2 4 8 16 32 64 128 256 ];
-    splitChars = s: init (tail (splitString "" s));
+  hexStringToBase32 =
+    let
+      mod = a: b: a - a / b * b;
+      pow2 = elemAt [ 1 2 4 8 16 32 64 128 256 ];
+      splitChars = s: init (tail (splitString "" s));
 
-    base32Alphabet = splitChars "ybndrfg8ejkmcpqxot1uwisza345h769";
-    hexToIntTable = listToAttrs (genList (x: {
-      name = toLower (toHexString x);
-      value = x;
-    }) 16);
+      base32Alphabet = splitChars "ybndrfg8ejkmcpqxot1uwisza345h769";
+      hexToIntTable = listToAttrs (genList
+        (x: {
+          name = toLower (toHexString x);
+          value = x;
+        }) 16);
 
-    initState = {
-      ret = "";
-      buf = 0;
-      bufBits = 0;
-    };
-    go = { ret, buf, bufBits }:
-      hex:
-      let
-        buf' = buf * pow2 4 + hexToIntTable.${hex};
-        bufBits' = bufBits + 4;
-        extraBits = bufBits' - 5;
-      in if bufBits >= 5 then {
-        ret = ret + elemAt base32Alphabet (buf' / pow2 extraBits);
-        buf = mod buf' (pow2 extraBits);
-        bufBits = bufBits' - 5;
-      } else {
-        ret = ret;
-        buf = buf';
-        bufBits = bufBits';
+      initState = {
+        ret = "";
+        buf = 0;
+        bufBits = 0;
       };
-  in hexString: (foldl' go initState (splitChars hexString)).ret;
+      go = { ret, buf, bufBits }:
+        hex:
+        let
+          buf' = buf * pow2 4 + hexToIntTable.${hex};
+          bufBits' = bufBits + 4;
+          extraBits = bufBits' - 5;
+        in
+        if bufBits >= 5 then {
+          ret = ret + elemAt base32Alphabet (buf' / pow2 extraBits);
+          buf = mod buf' (pow2 extraBits);
+          bufBits = bufBits' - 5;
+        } else {
+          ret = ret;
+          buf = buf';
+          bufBits = bufBits';
+        };
+    in
+    hexString: (foldl' go initState (splitChars hexString)).ret;
 
-in {
+in
+{
   meta.maintainers = [ maintainers.rycee ];
 
   options = {
@@ -216,6 +242,10 @@ in {
       enableFishIntegration = mkEnableOption "Fish integration" // {
         default = true;
       };
+
+      enableNushellIntegration = mkEnableOption "Nushell integration" // {
+        default = true;
+      };
     };
   };
 
@@ -237,23 +267,22 @@ in {
           "pinentry-program ${pkgs.pinentry.${cfg.pinentryFlavor}}/bin/pinentry"
           ++ [ cfg.extraConfig ]);
 
-      home.sessionVariablesExtra = optionalString cfg.enableSshSupport ''
-        if [[ -z "$SSH_AUTH_SOCK" ]]; then
-          export SSH_AUTH_SOCK="$(${gpgPkg}/bin/gpgconf --list-dirs agent-ssh-socket)"
-        fi
-      '';
+      home.sessionVariablesExtra = optionalString cfg.enableSshSupport sessionVariablesExtra;
 
       programs.bash.initExtra = mkIf cfg.enableBashIntegration gpgInitStr;
       programs.zsh.initExtra = mkIf cfg.enableZshIntegration gpgInitStr;
       programs.fish.interactiveShellInit =
         mkIf cfg.enableFishIntegration gpgFishInitStr;
+      programs.nushell.initExtra = mkIf cfg.enableNushellIntegration gpgNushellInitStr;
     }
 
     (mkIf (cfg.sshKeys != null) {
       # Trailing newlines are important
-      home.file."${homedir}/sshcontrol".text = concatMapStrings (s: ''
-        ${s}
-      '') cfg.sshKeys;
+      home.file."${homedir}/sshcontrol".text = concatMapStrings
+        (s: ''
+          ${s}
+        '')
+        cfg.sshKeys;
     })
 
     # The systemd units below are direct translations of the

@@ -38,11 +38,20 @@
 
       lib = {
         hm = (import ./modules/lib/stdlib-extended.nix nixpkgs.lib).hm;
-        homeManagerConfiguration = { modules ? [ ], pkgs, lib ? pkgs.lib
-          , extraSpecialArgs ? { }, check ? true
+        homeManagerConfiguration =
+          { modules ? [ ]
+          , pkgs
+          , lib ? pkgs.lib
+          , extraSpecialArgs ? { }
+          , check ? true
             # Deprecated:
-          , configuration ? null, extraModules ? null, stateVersion ? null
-          , username ? null, homeDirectory ? null, system ? null }@args:
+          , configuration ? null
+          , extraModules ? null
+          , stateVersion ? null
+          , username ? null
+          , homeDirectory ? null
+          , system ? null
+          }@args:
           let
             msgForRemovedArg = ''
               The 'homeManagerConfiguration' arguments
@@ -72,14 +81,16 @@
 
 
                   Deprecated args passed: ''
-                  + builtins.concatStringsSep " " used;
-              in lib.throwIf (used != [ ]) msg v;
+                + builtins.concatStringsSep " " used;
+              in
+              lib.throwIf (used != [ ]) msg v;
 
-          in throwForRemovedArgs (import ./modules {
+          in
+          throwForRemovedArgs (import ./modules {
             inherit pkgs lib check extraSpecialArgs;
             configuration = { ... }: {
               imports = modules
-                ++ [{ programs.home-manager.path = toString ./.; }];
+              ++ [{ programs.home-manager.path = toString ./.; }];
               nixpkgs = {
                 config = nixpkgs.lib.mkDefault pkgs.config;
                 inherit (pkgs) overlays;
@@ -87,40 +98,45 @@
             };
           });
       };
-    } // (let
-      forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
-    in {
-      devShells = forAllSystems (system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          tests = import ./tests { inherit pkgs; };
-        in tests.run);
+    } // (
+      let
+        forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
+      in
+      {
+        devShells = forAllSystems (system:
+          let
+            pkgs = nixpkgs.legacyPackages.${system};
+            tests = import ./tests { inherit pkgs; };
+          in
+          tests.run);
 
-      formatter = forAllSystems (system:
-        let pkgs = nixpkgs.legacyPackages.${system};
-        in pkgs.linkFarm "format" [{
-          name = "bin/format";
-          path = ./format;
-        }]);
+        formatter = forAllSystems (system:
+          let pkgs = nixpkgs.legacyPackages.${system};
+          in pkgs.linkFarm "format" [{
+            name = "bin/format";
+            path = ./format;
+          }]);
 
-      packages = forAllSystems (system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          releaseInfo = nixpkgs.lib.importJSON ./release.json;
-          docs = import ./docs {
-            inherit pkgs;
-            inherit (releaseInfo) release isReleaseBranch;
-          };
-          hmPkg = pkgs.callPackage ./home-manager { path = toString ./.; };
-        in {
-          default = hmPkg;
-          home-manager = hmPkg;
+        packages = forAllSystems (system:
+          let
+            pkgs = nixpkgs.legacyPackages.${system};
+            releaseInfo = nixpkgs.lib.importJSON ./release.json;
+            docs = import ./docs {
+              inherit pkgs;
+              inherit (releaseInfo) release isReleaseBranch;
+            };
+            hmPkg = pkgs.callPackage ./home-manager { path = toString ./.; };
+          in
+          {
+            default = hmPkg;
+            home-manager = hmPkg;
 
-          docs-html = docs.manual.html;
-          docs-json = docs.options.json;
-          docs-manpages = docs.manPages;
-        });
+            docs-html = docs.manual.html;
+            docs-json = docs.options.json;
+            docs-manpages = docs.manPages;
+          });
 
-      defaultPackage = forAllSystems (system: self.packages.${system}.default);
-    });
+        defaultPackage = forAllSystems (system: self.packages.${system}.default);
+      }
+    );
 }
