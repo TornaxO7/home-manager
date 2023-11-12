@@ -23,7 +23,7 @@ let
   '' + optionalString cfg.enableSshSupport gpgSshSupportStr;
 
   gpgNushellInitStr = ''
-    $env.GPG_TTY=$(tty)
+    $env.GPG_TTY = tty
     ${gpgPkg}/bin/gpg-connect-agent updatestartuptty /bye | collect { null }
   '';
 
