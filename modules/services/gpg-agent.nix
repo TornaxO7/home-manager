@@ -28,20 +28,17 @@ let
     ${gpgPkg}/bin/gpg-connect-agent updatestartuptty /bye | collect { null }
   '';
 
-  sessionVariablesExtra =
-    if config.programs.nushell.enable then
-      ''
-        if not "SSH_AUTH_SOCK" in $env {
-          $env.SSH_AUTH_SOCK = (${gpgPkg}/bin/gpgconf --list-dirs agent-ssh-socket)
-        }
-      ''
-    else
-      ''
-        if [[ -z "$SSH_AUTH_SOCK" ]]; then
-          export SSH_AUTH_SOCK="$(${gpgPkg}/bin/gpgconf --list-dirs agent-ssh-socket)"
-        fi
-      ''
-  ;
+  sessionVariablesExtra = ''
+    if [[ -z "$SSH_AUTH_SOCK" ]]; then
+      export SSH_AUTH_SOCK="$(${gpgPkg}/bin/gpgconf --list-dirs agent-ssh-socket)"
+    fi
+  '';
+
+  nushellExtraEnvVariables = ''
+    if not "SSH_AUTH_SOCK" in $env {
+      $env.SSH_AUTH_SOCK = (${gpgPkg}/bin/gpgconf --list-dirs agent-ssh-socket)
+    }
+  '';
 
   # mimic `gpgconf` output for use in `systemd` unit definitions.
   # we cannot use `gpgconf` directly because it heavily depends on system
@@ -274,7 +271,9 @@ in
       programs.zsh.initExtra = mkIf cfg.enableZshIntegration gpgInitStr;
       programs.fish.interactiveShellInit =
         mkIf cfg.enableFishIntegration gpgFishInitStr;
+
       programs.nushell.extraConfig = mkIf cfg.enableNushellIntegration gpgNushellInitStr;
+      programs.nushell.extraEnv = optionalString cfg.enableSshSupport nushellExtraEnvVariables;
     }
 
     (mkIf (cfg.sshKeys != null) {
