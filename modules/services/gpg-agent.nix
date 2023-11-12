@@ -24,6 +24,7 @@ let
 
   gpgNushellInitStr = ''
     $env.GPG_TTY = tty
+  '' + optionalString cfg.enableSshSupport ''
     ${gpgPkg}/bin/gpg-connect-agent updatestartuptty /bye | collect { null }
   '';
 
@@ -31,7 +32,7 @@ let
     if config.programs.nushell.enable then
       ''
         if not "SSH_AUTH_SOCK" in $env {
-          $env.SSH_AUTH_SOCK = $(${gpgPkg}/bin/gpgconf --list-dirs agent-ssh-socket)
+          $env.SSH_AUTH_SOCK = ${gpgPkg}/bin/gpgconf --list-dirs agent-ssh-socket
         }
       ''
     else
